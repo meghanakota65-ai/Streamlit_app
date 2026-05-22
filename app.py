@@ -1,7 +1,4 @@
 
-import streamlit as st
-import os
-import tempfile
 import numpy as np
 from PIL import Image, ImageDraw
 import uharfbuzz as hb
@@ -9,6 +6,22 @@ import freetype
 import math
 import unicodedata
 import re
+import streamlit as st
+import os
+import tempfile
+import subprocess
+import sys
+
+# ── Install ffmpeg if not present (for cloud deployment) ──────────────────
+def _ensure_ffmpeg():
+    try:
+        subprocess.run(["ffprobe", "-version"], capture_output=True, check=True)
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        st.info("Installing ffmpeg… (first run only, takes ~30s)")
+        subprocess.run(["apt-get", "update", "-qq"], check=True)
+        subprocess.run(["apt-get", "install", "-y", "-qq", "ffmpeg"], check=True)
+
+_ensure_ffmpeg()
 
 def _clean_ticker_text(text: str) -> str:
     """Remove characters unsupported by NotoSansTelugu to prevent □ boxes."""
