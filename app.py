@@ -562,34 +562,9 @@ if process_btn and main_video:
 
         status.info(f"✅ Video info read in {time.time()-t0:.1f}s — {W}x{H}, {main_duration:.1f}s")
 
-        # ── Step 1: Concat intro + main via FFmpeg (fast, no re-encode) ─
-        if intro_video:
-            t1 = time.time()
-            status.info("Concatenating intro + main…")
-            progress.progress(20, text="Concatenating…")
-            list_path = os.path.join(tmp_dir, "list.txt")
-            resized_intro_path = os.path.join(tmp_dir, "intro_resized.mp4")
-            # Resize intro to match main video dimensions
-            # AFTER
-            subprocess.run([
-                "ffmpeg", "-y", "-i", intro_path,
-                "-vf", f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}",
-                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-                "-c:a", "aac", "-b:a", "128k", resized_intro_path
-            ], check=True, capture_output=True)
-            with open(list_path, "w") as f:
-                f.write(f"file '{resized_intro_path}'\n")
-                f.write(f"file '{main_path}'\n")
-            base_path = os.path.join(tmp_dir, "base.mp4")
-            subprocess.run([
-                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                "-i", list_path, "-c", "copy", base_path
-            ], check=True, capture_output=True)
-        else:
-            base_path = main_path
-
-        if intro_video:
-            status.info(f"✅ Concat done in {time.time()-t1:.1f}s")
+        # ── Step 1: No pre-concat — intro+main joined in final filter_complex ─
+        # base_path is always just main; intro handled inline in filter_complex
+        base_path = main_path
 
         # ── Step 2: Pre-render ticker strip as video file ──────────────
         t2 = time.time()
@@ -727,44 +702,99 @@ if process_btn and main_video:
                 gif_logo_filter = f"scale={logo_w_target}:{logo_h_target},format=rgba,setpts=PTS-STARTPTS"
             else:
                 gif_logo_filter = "setpts=PTS-STARTPTS"
-            # AFTER
-            filter_complex = (
-                f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}[scaled];"
-                f"[1:v]loop=loop=-1:size={total_ticker_frames}:start=0[looped];"
-                f"[looped]trim=duration={main_duration},setpts=PTS-STARTPTS[ticker];"
-                f"[scaled][ticker]overlay=0:H-{ticker_H}:enable='gte(t,{ticker_start})'[v1];"
-                f"[2:v]{gif_logo_filter}[logo];"
-                f"[v1][logo]overlay={lx}:{ly}:shortest=1:enable='gte(t,{ticker_start})'[vout]"
-            )
-            ffmpeg_cmd = [
-                "ffmpeg", "-y",
-                "-i", base_path,
-                "-i", ticker_path,
-                *logo_input_args,
-                "-filter_complex", filter_complex,
-                "-map", "[vout]", "-map", "0:a?",
-                "-c:v", "libx264", "-b:v", bitrate_map[output_quality],
-                "-c:a", "aac", "-r", str(output_fps),
-                "-preset", "ultrafast", out_path
-            ]
+            if intro_path:
+                # input 0=intro, 1=main, 2=ticker, 3=logo
+                filter_complex = (
+                    f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1[iv];"
+                    f"[1:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1[mv];"
+                    f"[0:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[ia];"
+                    f"[1:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[ma];"
+                    f"[iv][ia][mv][ma]concat=n=2:v=1:a=1[cv][ca];"
+                    f"[2:v]loop=loop=-1:size={total_ticker_frames}:start=0[looped];"
+                    f"[looped]trim=duration={main_duration},setpts=PTS-STARTPTS[ticker];"
+                    f"[cv][ticker]overlay=0:H-{ticker_H}:enable='gte(t,{ticker_start})'[v1];"
+                    f"[3:v]{gif_logo_filter}[logo];"
+                    f"[v1][logo]overlay={lx}:{ly}:shortest=1:enable='gte(t,{ticker_start})'[vout]"
+                )
+                ffmpeg_cmd = [
+                    "ffmpeg", "-y",
+                    "-i", intro_path,
+                    "-i", base_path,
+                    "-i", ticker_path,
+                    *logo_input_args,
+                    "-filter_complex", filter_complex,
+                    "-map", "[vout]", "-map", "[ca]",
+                    "-c:v", "libx264", "-b:v", bitrate_map[output_quality],
+                    "-c:a", "aac", "-ar", "44100", "-ac", "2", "-b:a", "192k",
+                    "-r", str(output_fps),
+                    "-preset", "ultrafast", out_path
+                ]
+            else:
+                # input 0=main, 1=ticker, 2=logo
+                filter_complex = (
+                    f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}[scaled];"
+                    f"[0:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[ca];"
+                    f"[1:v]loop=loop=-1:size={total_ticker_frames}:start=0[looped];"
+                    f"[looped]trim=duration={main_duration},setpts=PTS-STARTPTS[ticker];"
+                    f"[scaled][ticker]overlay=0:H-{ticker_H}[v1];"
+                    f"[2:v]{gif_logo_filter}[logo];"
+                    f"[v1][logo]overlay={lx}:{ly}:shortest=1[vout]"
+                )
+                ffmpeg_cmd = [
+                    "ffmpeg", "-y",
+                    "-i", base_path,
+                    "-i", ticker_path,
+                    *logo_input_args,
+                    "-filter_complex", filter_complex,
+                    "-map", "[vout]", "-map", "[ca]",
+                    "-c:v", "libx264", "-b:v", bitrate_map[output_quality],
+                    "-c:a", "aac", "-ar", "44100", "-ac", "2", "-b:a", "192k",
+                    "-r", str(output_fps),
+                    "-preset", "ultrafast", out_path
+                ]
         else:
-            # AFTER
-            filter_complex = (
-                f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}[scaled];"
-                f"[1:v]loop=loop=-1:size={total_ticker_frames}:start=0[looped];"
-                f"[looped]trim=duration={main_duration},setpts=PTS-STARTPTS[ticker];"
-                f"[scaled][ticker]overlay=0:H-{bar_h}:enable='gte(t,{ticker_start})'[vout]"
-            )
-            ffmpeg_cmd = [
-                "ffmpeg", "-y",
-                "-i", base_path,
-                "-i", ticker_path,
-                "-filter_complex", filter_complex,
-                "-map", "[vout]", "-map", "0:a?",
-                "-c:v", "libx264", "-b:v", bitrate_map[output_quality],
-                "-c:a", "aac", "-r", str(output_fps),
-                "-preset", "fast", out_path
-            ]
+            if intro_path:
+                filter_complex = (
+                    f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1[iv];"
+                    f"[1:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1[mv];"
+                    f"[0:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[ia];"
+                    f"[1:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[ma];"
+                    f"[iv][ia][mv][ma]concat=n=2:v=1:a=1[cv][ca];"
+                    f"[2:v]loop=loop=-1:size={total_ticker_frames}:start=0[looped];"
+                    f"[looped]trim=duration={main_duration},setpts=PTS-STARTPTS[ticker];"
+                    f"[cv][ticker]overlay=0:H-{bar_h}:enable='gte(t,{ticker_start})'[vout]"
+                )
+                ffmpeg_cmd = [
+                    "ffmpeg", "-y",
+                    "-i", intro_path,
+                    "-i", base_path,
+                    "-i", ticker_path,
+                    "-filter_complex", filter_complex,
+                    "-map", "[vout]", "-map", "[ca]",
+                    "-c:v", "libx264", "-b:v", bitrate_map[output_quality],
+                    "-c:a", "aac", "-ar", "44100", "-ac", "2", "-b:a", "192k",
+                    "-r", str(output_fps),
+                    "-preset", "fast", out_path
+                ]
+            else:
+                filter_complex = (
+                    f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}[scaled];"
+                    f"[0:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[ca];"
+                    f"[1:v]loop=loop=-1:size={total_ticker_frames}:start=0[looped];"
+                    f"[looped]trim=duration={main_duration},setpts=PTS-STARTPTS[ticker];"
+                    f"[scaled][ticker]overlay=0:H-{bar_h}[vout]"
+                )
+                ffmpeg_cmd = [
+                    "ffmpeg", "-y",
+                    "-i", base_path,
+                    "-i", ticker_path,
+                    "-filter_complex", filter_complex,
+                    "-map", "[vout]", "-map", "[ca]",
+                    "-c:v", "libx264", "-b:v", bitrate_map[output_quality],
+                    "-c:a", "aac", "-ar", "44100", "-ac", "2", "-b:a", "192k",
+                    "-r", str(output_fps),
+                    "-preset", "fast", out_path
+                ]
 
         status.info("Exporting final video…")
         progress.progress(80, text="Exporting…")
