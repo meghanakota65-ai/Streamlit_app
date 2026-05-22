@@ -9,19 +9,6 @@ import re
 import streamlit as st
 import os
 import tempfile
-import subprocess
-import sys
-
-# ── Install ffmpeg if not present (for cloud deployment) ──────────────────
-def _ensure_ffmpeg():
-    try:
-        subprocess.run(["ffprobe", "-version"], capture_output=True, check=True)
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        st.info("Installing ffmpeg… (first run only, takes ~30s)")
-        subprocess.run(["apt-get", "update", "-qq"], check=True)
-        subprocess.run(["apt-get", "install", "-y", "-qq", "ffmpeg"], check=True)
-
-_ensure_ffmpeg()
 
 def _clean_ticker_text(text: str) -> str:
     """Remove characters unsupported by NotoSansTelugu to prevent □ boxes."""
@@ -483,7 +470,7 @@ with col2:
         preview_img = Image.fromarray(preview, "RGBA")
         bg = Image.new("RGB", preview_img.size, (30, 30, 30))
         bg.paste(preview_img, mask=preview_img.split()[3])
-        st.image(bg, caption="Ticker bar preview", use_container_width=True)
+        st.image(bg, caption="Ticker bar preview", width="stretch")
     except Exception as e:
         st.warning(f"Preview error: {e}")
 
