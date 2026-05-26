@@ -1,4 +1,5 @@
 
+
 import numpy as np
 from PIL import Image, ImageDraw
 import uharfbuzz as hb
@@ -375,7 +376,7 @@ def make_ticker_frame_cached(
     num_tiles = (frame_w // tile_w) + 3
 
     blue_canvas = np.zeros((bar_h, frame_w, 4), dtype=np.uint8)
-        # Anchor first tile at right edge, scroll left over time
+    # Anchor first tile at right edge, scroll left over time
     start_x = frame_w - (scrolled % tile_w)
     bx = start_x
     while bx > -bw:
@@ -547,7 +548,7 @@ for i, (tab, key) in enumerate(zip(tab_objects, SEGMENT_KEYS)):
                 preview_img = Image.fromarray(preview, "RGBA")
                 bg = Image.new("RGB", preview_img.size, (20, 20, 20))
                 bg.paste(preview_img, mask=preview_img.split()[3])
-                st.image(bg, caption="Live ticker preview", use_container_width=True)
+                st.image(bg, caption="Live ticker preview", width='stretch')
             except Exception as e:
                 st.warning(f"Preview error: {e}")
 
