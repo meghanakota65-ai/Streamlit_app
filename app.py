@@ -24,15 +24,16 @@ def _clean_ticker_text(text: str) -> str:
 
 
 FONT_PATH = os.path.join(os.path.dirname(__file__), "fonts", "Ramabhadra-Regular.ttf")
-if not os.path.exists(FONT_PATH):
-    st.error(f"❌ Font not found at: {FONT_PATH}")
-    st.stop()
 
 st.set_page_config(
     page_title="Telugu Video Editor",
     page_icon="🎬",
     layout="wide",
 )
+
+if not os.path.exists(FONT_PATH):
+    st.error(f"❌ Font not found at: {FONT_PATH}")
+    st.stop()
 
 st.markdown("""
 <style>
