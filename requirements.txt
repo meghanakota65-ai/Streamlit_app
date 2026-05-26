@@ -1,5 +1,5 @@
 streamlit
 numpy
 pillow
-uharfbuzz
-freetype-py
+uharfbuzz==0.25.0
+freetype-py==2.4.0
