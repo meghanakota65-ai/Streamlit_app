@@ -549,7 +549,7 @@ for i, (tab, key) in enumerate(zip(tab_objects, SEGMENT_KEYS)):
                     red_label, blue_scroll, prev_w, prev_h,
                     t=0.5, scroll_speed=scroll_speed, font_size=ticker_font_size
                 )
-                preview_img = Image.fromarray(preview, "RGBA")
+                preview_img = Image.fromarray(preview)
                 bg = Image.new("RGB", preview_img.size, (20, 20, 20))
                 bg.paste(preview_img, mask=preview_img.split()[3])
                 st.image(bg, caption="Live ticker preview", width='stretch')
